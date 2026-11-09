@@ -28,7 +28,7 @@ npm run build:single   # -> dist-single/index.html
 
 ## Jazyk
 
-Hra je v slovenčine aj angličtine. Prepínač SK / EN je v hlavnom menu a v Nastaveniach; voľba sa ukladá do `localStorage` (`hubar.lang`) a hra sa po zmene znovu načíta. Pri prvom spustení sa jazyk zvolí podľa prehliadača (sk/cs → slovenčina).
+Hra je v slovenčine aj angličtine. Prepínač SK / EN je v hlavnom menu a v Nastaveniach; voľba sa ukladá do `localStorage` (`hubar.lang`) a hra sa po zmene znovu načíta. Predvolený jazyk je slovenčina.
 
 Texty sa píšu v angličtine; `src/i18n/sk.ts` je slovník anglický text → slovenský preklad (`{0}` = hodnota doplnená za behu). Modul `src/i18n/index.ts` prekladá všetko, čo sa zobrazí v DOM. Kontrola chýbajúcich prekladov v konzole: `__i18n.missing()` (aktuálna obrazovka) a `__i18n.data()` (texty druhov a lesov).
 

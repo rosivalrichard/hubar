@@ -18,7 +18,7 @@ function detect(): Lang {
   } catch {
     /* storage unavailable */
   }
-  return /^(sk|cs)\b/i.test(navigator.language || '') ? 'sk' : 'en';
+  return 'sk'; // Slovak by default; English is one tap away (menu / Settings)
 }
 
 export const LANG: Lang = detect();
