@@ -77,7 +77,7 @@ export class Game {
   renderQuality: 'low' | 'medium' | 'high' = 'medium';
   softwareGL = false;
 
-  private clock = new THREE.Clock();
+  private clock = new THREE.Timer();
   private flashlight: THREE.SpotLight;
   private flashlightOn = false;
   private elapsed = 0;
@@ -110,7 +110,7 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.7));
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.06;
@@ -203,7 +203,8 @@ export class Game {
     this.menus.showMain();
     this.hud.hide();
     this.state = 'menu';
-    this.clock.start();
+    this.clock.connect(document); // pauses delta while the tab is hidden
+    this.clock.reset();
     this.tick();
     setTimeout(() => this.promptOrientation(), 1400);
   }
@@ -821,6 +822,7 @@ export class Game {
 
   private tick = () => {
     requestAnimationFrame(this.tick);
+    this.clock.update();
     const dt = Math.min(0.05, this.clock.getDelta());
     this.elapsed += dt;
 
