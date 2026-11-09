@@ -138,7 +138,11 @@ export class Game {
     this.hud = new HUD(document.getElementById('hud-root') as HTMLElement);
     this.menus = new Menus(document.getElementById('ui-root') as HTMLElement);
     this.menus.bind(this);
-    this.inspectPanel = new InspectPanel(document.getElementById('ui-root') as HTMLElement);
+    // own layer: #ui-root is wiped by Menus.hide() when the walk starts, which removed this panel
+    const inspectLayer = document.createElement('div');
+    inspectLayer.id = 'inspect-root';
+    document.body.appendChild(inspectLayer);
+    this.inspectPanel = new InspectPanel(inspectLayer);
 
     this.flashlight = new THREE.SpotLight(0xffe6bf, 0, 34, 0.52, 0.6, 1.15);
     this.flashlight.position.set(0.22, -0.1, -0.06);
@@ -484,6 +488,7 @@ export class Game {
     if (this.weather) this.weather.paused = true;
     this.hud.hide();
     this.inspectPanel.close();
+    this.hud.root.classList.remove('inspecting');
     this.audio.sfx('levelup');
     this.menus.showSummary(res);
   }
@@ -625,6 +630,7 @@ export class Game {
     this.inspectBaseLook.copy(center).add(new THREE.Vector3(0, -size.y * 0.3, 0));
     this.inspectLook.copy(center);
     this.inspectPanel.open(m, this.inspectHost());
+    this.hud.root.classList.add('inspecting');
     window.setTimeout(() => {
       if (this.state === 'inspect') this.inspectPanel.flash('Drag to turn the specimen. Scroll to lean in. Observe before you decide.');
     }, 450);

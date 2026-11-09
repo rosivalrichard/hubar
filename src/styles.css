@@ -763,3 +763,5 @@ p { margin: 0; }
 .t-crouch { grid-column: 1; grid-row: 1; width: 48px; height: 48px; font-size: 18px; }
 .t-pick { grid-column: 1; grid-row: 2; }
 .t-main { grid-column: 2; grid-row: 2; width: 76px; height: 76px; border-color: rgba(201, 164, 90, 0.75); color: var(--gold-bright, #e2c27a); font-size: 12px; }
+#inspect-root { position: fixed; inset: 0; z-index: 25; pointer-events: none; }
+.hud.inspecting { opacity: 0; pointer-events: none; transition: opacity .2s; }
