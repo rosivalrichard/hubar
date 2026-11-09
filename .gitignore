@@ -1,0 +1,8 @@
+node_modules/
+dist/
+artifacts/
+dev.log
+dev.pid
+*.local
+.DS_Store
+dist-single

@@ -1,0 +1,23 @@
+{
+  "name": "hubar",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "HUBAR - a realistic Central European mushroom hunting simulator",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "build:single": "tsc --noEmit && vite build --mode single"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.7",
+    "vite-plugin-singlefile": "^2.3.4"
+  }
+}
