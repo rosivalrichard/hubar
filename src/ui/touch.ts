@@ -109,8 +109,9 @@ export class TouchControls {
           this.lookLast = { x: t.clientX, y: t.clientY };
           const st = this.getState();
           if (st === 'playing') {
-            this.input.mouseDX += dx * LOOK_GAIN;
-            this.input.mouseDY += dy * LOOK_GAIN;
+            // drag-the-world convention: finger right -> view turns left, finger down -> view tilts up
+            this.input.mouseDX -= dx * LOOK_GAIN;
+            this.input.mouseDY -= dy * LOOK_GAIN;
           } else if (st === 'inspect') {
             this.onInspectDrag(dx, dy);
           }

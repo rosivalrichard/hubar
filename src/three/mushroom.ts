@@ -3,7 +3,11 @@
 import * as THREE from 'three';
 import { RNG, TAU, clamp, lerp, hash2, hash3, strSeed, noise2, fbm2, smoothstep } from '../core/util';
 import type { Species } from '../data/species-types';
-import { mushroomAtlas, UV_TILE } from './textures';
+import { mushroomAtlas, UV_TILE, DETAIL_SCALE } from './textures';
+import { NO_SHAPE, type ShapeMods } from '../game/specimens';
+
+/** Shape modifiers of the specimen currently being built (set by buildMushroomGeometry). */
+let SHAPE: ShapeMods = NO_SHAPE;
 
 export type GrowthStage = 'young' | 'mature' | 'old' | 'damaged';
 
@@ -71,10 +75,27 @@ const STAGE: Record<GrowthStage, { capR: number; capH: number; stem: number; ste
 
 function capColorAt(sp: Species, c: THREE.Color, angle: number, r01: number, variant: number, tint: number) {
   const n = fbm2(Math.cos(angle) * 2.4 + variant * 7, Math.sin(angle) * 2.4 + r01 * 3 + variant * 3, 3);
-  let m = 1 + n * 0.09 * (0.4 + r01);
+  let m = 1 + n * 0.05 * (0.4 + r01);
   // rim is often paler
   m *= 1 + smoothstep(0.82, 1, r01) * 0.1;
   c.multiplyScalar(tint * m);
+}
+
+function densifyProfile(p: Pt[], sub: number): Pt[] {
+  if (p.length < 3) return p;
+  const out: Pt[] = [];
+  const at = (i: number) => p[Math.max(0, Math.min(p.length - 1, i))];
+  for (let i = 0; i < p.length - 1; i++) {
+    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+    for (let k = 0; k < sub; k++) {
+      const t = k / sub, t2 = t * t, t3 = t2 * t;
+      const f = (a: number, b: number, c: number, d: number) =>
+        0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push([Math.max(0, f(p0[0], p1[0], p2[0], p3[0])), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  out.push(p[p.length - 1]);
+  return out;
 }
 
 function buildCap(
@@ -87,14 +108,15 @@ function buildCap(
 ) {
   const vis = sp.visual;
   const st = STAGE[stage];
-  const R = (vis.capDiameter[1] / 2) * 0.0115 * st.capR;
-  const H = R * vis.capRatio * st.capH;
+  const R = (lerp(vis.capDiameter[0], vis.capDiameter[1], 0.62) / 2) * 0.0115 * st.capR * SHAPE.capMul;
+  const H = R * vis.capRatio * st.capH * (SHAPE.capMul > 1.2 ? 0.85 : 1);
+  const irregular = SHAPE.symmetric ? 0 : 1;
   const base = new THREE.Color(vis.capColor);
   const edge = new THREE.Color(vis.capEdge);
   const col = new THREE.Color();
   const prof = PROFILES[vis.capShape] || PROFILES.convex;
   const radial = 64;
-  const marginWave = vis.margin === 'wavy' || vis.margin === 'scalloped' ? 0.055 : 0.02;
+  const marginWave = (vis.margin === 'wavy' || vis.margin === 'scalloped' ? 0.055 : 0.02) * (SHAPE.symmetric ? 0.15 : 1);
   const striate = vis.margin === 'striate';
   const seedA = variant * 13.7 + 2.1;
 
@@ -108,6 +130,11 @@ function buildCap(
     pts.push([last[0] * 1.03, last[1] + 0.07], [last[0] * 0.97, last[1] + 0.13]);
   }
 
+  // The hand-written profiles have ~10 points; with so few rings the smooth-shaded cap shows terraced
+  // "contour line" bands. Densify with Catmull-Rom so light falls off smoothly.
+  const dense = densifyProfile(pts, 4);
+  pts.length = 0;
+  pts.push(...dense);
   const rings = pts.length;
   const capStartIdx = g.pos.length / 3;
   const damageCut = (a: number) => {
@@ -122,9 +149,9 @@ function buildCap(
       const a = (j / radial) * TAU;
       let rr = pr;
       // organic irregularity
-      rr *= 1 + noise2(Math.cos(a) * 2.2 + seedA, Math.sin(a) * 2.2 + seedA) * 0.035;
+      rr *= 1 + noise2(Math.cos(a) * 2.2 + seedA, Math.sin(a) * 2.2 + seedA) * 0.035 * irregular;
       rr *= 1 + Math.sin(a * 5 + seedA) * marginWave * smoothstep(0.6, 1, pr);
-      const y = py * H + noise2(Math.cos(a) * 3 + seedA, pr * 4) * H * 0.035;
+      const y = py * H + noise2(Math.cos(a) * 3 + seedA, pr * 4) * H * 0.035 * irregular;
       if (i === 0 && pr > 0) {
         // apex handled by center fan
       }
@@ -169,7 +196,7 @@ function buildCap(
   // underside
   const under = new THREE.Color(vis.hymenColor).multiplyScalar(stage === 'old' ? 0.9 : 0.96);
   const rimY = pts[pts.length - 1][1] * H;
-  const stemR = (vis.stemWidth[1] / 2) * 0.0115 * st.stemW;
+  const stemR = (vis.stemWidth[1] / 2) * 0.0115 * st.stemW * SHAPE.stemWMul;
   const holeR = Math.min(stemR * 0.9, R * 0.4);
   const um = 8;
   const underStart = g.pos.length / 3;
@@ -190,7 +217,11 @@ function buildCap(
       } else {
         const rr = lerp(1, Math.max(0.06, holeR / Math.max(R, 0.001)), t);
         const droop = vis.gillType === 'pores' ? 0.08 : 0.16;
-        const yy = lerp(rimY, rimY + H * droop + (stage === 'old' ? H * 0.04 : 0), t);
+        let yy = lerp(rimY, rimY + H * droop + (stage === 'old' ? H * 0.04 : 0), t);
+        if (sp.form === 'bolete') {
+          // 1–2 cm deep tube layer: a spongy cushion bulging below the margin, depressed around the stem
+          yy = rimY - R * 0.12 * Math.sin(Math.PI * t * 0.92) + smoothstep(0.65, 1, t) * H * 0.14;
+        }
         const x = Math.cos(a) * rr * R;
         const z = Math.sin(a) * rr * R;
         const [uu, vv] = tileUV(UV_TILE.gills, 0.5 + Math.cos(a) * rr * 0.5, 0.5 + Math.sin(a) * rr * 0.5);
@@ -220,7 +251,7 @@ function buildCap(
   for (let j = 0; j <= radial; j++) {
     const a = (j / radial) * TAU;
     let rr = 1;
-    rr *= 1 + noise2(Math.cos(a) * 2.2 + seedA, Math.sin(a) * 2.2 + seedA) * 0.035;
+    rr *= 1 + noise2(Math.cos(a) * 2.2 + seedA, Math.sin(a) * 2.2 + seedA) * 0.035 * irregular;
     rr *= 1 + Math.sin(a * 5 + seedA) * marginWave;
     const x = Math.cos(a) * rr * R;
     const z = Math.sin(a) * rr * R;
@@ -244,7 +275,7 @@ function buildCap(
   if (vis.gillType === 'gills' && sp.form !== 'funnel') {
     const nG = 84;
     const inner = holeR;
-    const outer = R * 0.965;
+    const outer = R * 0.9;
     const yTop = rimY + H * 0.13;
     const yBot = rimY - R * 0.05 - (stage === 'old' ? R * 0.02 : 0);
     const blade = new THREE.Color(vis.hymenColor).multiplyScalar(0.94);
@@ -289,6 +320,9 @@ function buildCap(
 function stemRadius(t: number, type: string) {
   // t: 0 base .. 1 apex
   switch (type) {
+    case 'barrel':
+      // king boletes: stout, bulging in the lower half, rounded base, narrower apex
+      return 0.86 + 0.62 * Math.exp(-Math.pow((t - 0.3) / 0.32, 2)) - 0.1 * t - 0.12 * Math.pow(1 - t, 6);
     case 'club':
       return 1.55 - 0.55 * smoothstep(0, 0.7, t) - 0.08 * t;
     case 'bulb':
@@ -305,8 +339,14 @@ function stemRadius(t: number, type: string) {
 function buildStem(g: Geo, sp: Species, stage: GrowthStage, rng: RNG, capBottom: number, R: number) {
   const vis = sp.visual;
   const st = STAGE[stage];
-  const h = (lerp(vis.stemHeight[0], vis.stemHeight[1], 0.55) / 100) * st.stem;
-  const w = (lerp(vis.stemWidth[0], vis.stemWidth[1], 0.6) / 100) * st.stemW;
+  const kingBolete = sp.form === 'bolete' && vis.stemBase === 'club' && /^(Boletus|Tylopilus) /.test(sp.sci);
+  // King boletes have a massive stem (up to 7–10 cm, base up to 12 cm) and, when young, a barrel stem
+  // nearly as wide as the small "bun" cap. Same 1.15 scale as the cap so proportions stay true.
+  const boleteYoung = kingBolete && stage === 'young';
+  const h = (lerp(vis.stemHeight[0], vis.stemHeight[1], kingBolete ? 0.45 : 0.55) / 100) * st.stem * SHAPE.stemHMul * (boleteYoung ? 1.45 : 1);
+  const w =
+    (lerp(vis.stemWidth[0], vis.stemWidth[1], kingBolete ? 0.92 : 0.6) / 100) * (kingBolete ? 1.15 : 1) * st.stemW * SHAPE.stemWMul * (boleteYoung ? 1.3 : 1);
+  const profile = kingBolete ? 'barrel' : vis.stemBase;
   const rings = 14;
   const radial = 26;
   const base = new THREE.Color(vis.stemColor);
@@ -314,12 +354,12 @@ function buildStem(g: Geo, sp: Species, stage: GrowthStage, rng: RNG, capBottom:
   const seed = strSeed(sp.id);
   const start = g.pos.length / 3;
 
-  const lean = rng.range(-0.06, 0.06);
+  const lean = SHAPE.symmetric ? 0 : rng.range(-0.07, 0.07) * h; // gentle bow proportional to stem length
   const leanDir = rng.f() * TAU;
 
   for (let i = 0; i <= rings; i++) {
     const t = i / rings;
-    const rr = (w / 2) * stemRadius(t, vis.stemBase) * (1 + noise2(t * 4 + seed, t * 9) * 0.05);
+    const rr = (w / 2) * stemRadius(t, profile) * (1 + noise2(t * 4 + seed, t * 9) * 0.05);
     const y = t * h;
     const bend = Math.sin(t * Math.PI) * lean;
     for (let j = 0; j <= radial; j++) {
@@ -348,7 +388,7 @@ function buildStem(g: Geo, sp: Species, stage: GrowthStage, rng: RNG, capBottom:
   const topStart = g.pos.length / 3;
   for (let j = 0; j <= radial; j++) {
     const a = (j / radial) * TAU;
-    const rr = (w / 2) * stemRadius(1, vis.stemBase);
+    const rr = (w / 2) * stemRadius(1, profile);
     vert(g, Math.cos(a) * rr, topY, Math.sin(a) * rr, 0.5, 1, topC);
   }
   for (let j = 0; j < radial; j++) {
@@ -360,7 +400,7 @@ function buildStem(g: Geo, sp: Species, stage: GrowthStage, rng: RNG, capBottom:
   const bStart = g.pos.length / 3;
   for (let j = 0; j <= radial; j++) {
     const a = (j / radial) * TAU;
-    const rr = (w / 2) * stemRadius(0, vis.stemBase);
+    const rr = (w / 2) * stemRadius(0, profile);
     vert(g, Math.cos(a) * rr, -0.006, Math.sin(a) * rr, 0.5, 0.1, baseC);
   }
   for (let j = 0; j < radial; j++) {
@@ -653,10 +693,20 @@ function buildBrainCap(g: Geo, sp: Species, stage: GrowthStage, variant: number,
 
 const geometryCache = new Map<string, THREE.BufferGeometry>();
 
-export function buildMushroomGeometry(sp: Species, stage: GrowthStage, variant: number): THREE.BufferGeometry {
-  const key = `${sp.id}:${stage}:${variant}`;
+export function buildMushroomGeometry(sp: Species, stage: GrowthStage, variant: number, shape: ShapeMods = NO_SHAPE): THREE.BufferGeometry {
+  const sk = shape === NO_SHAPE ? '' : `:${shape.capMul.toFixed(2)},${shape.stemWMul.toFixed(2)},${shape.stemHMul.toFixed(2)},${shape.count ?? '-'},${+shape.fused},${+shape.symmetric}`;
+  const key = `${sp.id}:${stage}:${variant}${sk}`;
   const hit = geometryCache.get(key);
   if (hit) return hit;
+  SHAPE = shape;
+  try {
+    return buildGeometryInner(sp, stage, variant, key);
+  } finally {
+    SHAPE = NO_SHAPE;
+  }
+}
+
+function buildGeometryInner(sp: Species, stage: GrowthStage, variant: number, key: string): THREE.BufferGeometry {
   const rng = new RNG(strSeed(key));
   const g = newGeo();
 
@@ -664,35 +714,44 @@ export function buildMushroomGeometry(sp: Species, stage: GrowthStage, variant: 
     buildCoral(g, sp, stage, variant, rng);
   } else if (sp.form === 'brain') {
     buildBrainCap(g, sp, stage, variant, rng);
+    const capEnd = g.pos.length;
     const R = (sp.visual.capDiameter[1] / 2) * 0.0115 * STAGE[stage].capR;
     const stem = buildStem(g, sp, stage, rng, 0, R);
-    // lift cap onto stem
-    const capH = R * 1.1 * STAGE[stage].capH;
-    for (let i = 0; i < g.pos.length; i += 3) {
-      if (g.pos[i + 1] > 0) g.pos[i + 1] += stem.h * 0.9;
-    }
-    void capH;
+    // lift only the cap onto the stem (previously the stem was lifted too and floated above the cap)
+    for (let i = 1; i < capEnd; i += 3) g.pos[i] += stem.h * 0.9;
   } else {
     const cluster = sp.visual.cluster;
-    const n = sp.form === 'shelf' ? rng.int(2, 4) : clamp(rng.int(cluster[0], cluster[1]), 1, 6);
+    const n = SHAPE.count ? clamp(SHAPE.count, 1, 16) : sp.form === 'shelf' ? rng.int(2, 4) : clamp(rng.int(cluster[0], cluster[1]), 1, 6);
     for (let k = 0; k < n; k++) {
       const body = newGeo();
       const damage = stage === 'damaged' ? { a0: rng.range(0, TAU), a1: 0 } : undefined;
       if (damage) damage.a1 = damage.a0 + rng.range(0.4, 1.1);
       const cap = buildCap(body, sp, stage, variant + k, new RNG(strSeed(key + k)), damage);
+      const capEnd = body.pos.length;
       const stem = buildStem(body, sp, stage, new RNG(strSeed(key + 's' + k)), cap.rimY, cap.R);
       buildRing(body, sp, stage, stem.h, stem.w, new RNG(strSeed(key + 'r' + k)));
       buildVolva(body, sp, stage, stem.h, stem.w, new RNG(strSeed(key + 'v' + k)));
+      const wartStart = body.pos.length;
       buildWarts(body, sp, cap.R, cap.H, variant + k, new RNG(strSeed(key + 'w' + k)));
 
-      // shift body so the stem base sits at y=0 and cap sits on the stem
-      for (let i = 1; i < body.pos.length; i += 3) body.pos[i] += stem.h;
-      // clamp cap height relative to stem: cap geometry was built at rimY 0, so add stem height already done.
+      // Cap and warts are built around y=0 (rim level); stem, ring and volva already sit on the ground.
+      // Lift only the cap so it rests on the stem apex (stem top tucked a little into the cap flesh).
+      const lift = stem.h - cap.H * 0.14;
+      for (let i = 1; i < capEnd; i += 3) body.pos[i] += lift;
+      for (let i = wartStart + 1; i < body.pos.length; i += 3) body.pos[i] += lift;
 
       let m = new THREE.Matrix4();
-      if (n > 1) {
+      if (SHAPE.fused && n === 2) {
+        // fused twins: one shared base, the two fruit bodies splay apart
+        const side = k === 0 ? 1 : -1;
+        m.makeRotationY(rng.f() * TAU * 0.1);
+        const sc = k === 1 ? 0.8 : 1;
+        m.premultiply(new THREE.Matrix4().makeScale(sc, sc, sc));
+        m.premultiply(new THREE.Matrix4().makeRotationX(side * rng.range(0.42, 0.58)));
+        m.setPosition(0, 0, side * cap.R * 0.16);
+      } else if (n > 1) {
         const a = (k / n) * TAU + rng.range(-0.4, 0.4);
-        const dist = sp.form === 'shelf' ? 0.02 : (cap.R * 0.85) * rng.range(0.6, 1.1);
+        const dist = sp.form === 'shelf' ? 0.02 : cap.R * 0.85 * rng.range(0.6, 1.1) * (n > 6 ? 1 + (k % 3) * 0.55 : 1);
         const s = sp.form === 'shelf' ? rng.range(0.7, 1) : rng.range(0.7, 0.98);
         m.makeRotationY(rng.f() * TAU);
         m.scale(new THREE.Vector3(s, s, s));
@@ -757,10 +816,11 @@ export function materialForSpecies(sp: Species, variant: number, wet: boolean): 
     mat = new THREE.MeshStandardMaterial({
       map: atlas.map,
       bumpMap: atlas.bump,
-      bumpScale: 0.9,
+      bumpScale: 0.35,
       roughness: sp.visual.sticky ? 0.55 : 0.86,
       metalness: 0,
       vertexColors: true,
+      color: new THREE.Color(1 / DETAIL_SCALE, 1 / DETAIL_SCALE, 1 / DETAIL_SCALE), // undo detail-map scaling
       side: THREE.DoubleSide,
       transparent: false,
     });
@@ -790,10 +850,11 @@ export function buildMushroomVisual(
   stage: GrowthStage,
   variant: number,
   wet: boolean,
-  scaleJitter: number
+  scaleJitter: number,
+  shape: ShapeMods = NO_SHAPE
 ): MushroomVisual {
   const group = new THREE.Group();
-  const geo = buildMushroomGeometry(sp, stage, variant);
+  const geo = buildMushroomGeometry(sp, stage, variant, shape);
   const mat = materialForSpecies(sp, variant % 3, wet);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow = true;

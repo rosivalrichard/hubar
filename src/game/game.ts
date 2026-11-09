@@ -1,5 +1,7 @@
 import { tr } from '../i18n';
 import { IS_TOUCH, TouchControls } from '../ui/touch';
+import { recordCollection, recordDiscovery, isExtraordinary } from './museum';
+import { RARITY_NAME, RARITY_COLOR, KIND_LABEL, type Rarity } from './specimens';
 /* HUBÁR — game orchestrator: world lifecycle, player, interaction, modes. */
 
 import * as THREE from 'three';
@@ -18,6 +20,7 @@ import {
   S,
   addXP,
   addToBasket,
+  speciesRecord,
   basketCapacity,
   challengeEntry,
   checkAchievements,
@@ -590,8 +593,11 @@ export class Game {
       identified: m.identified,
       claimedId: m.identified ? m.species.id : null,
       wet: (this.weather?.wetness ?? 0) > 0.5,
+      rarity: m.rarity,
+      weightG: m.weightG,
     });
     if (!ok) return false;
+    recordCollection(m, this.biomeId, this.weather?.kind ?? '');
     this.audio.sfx('collect');
     if (isDangerous(m.species) && m.identified) {
       toast('Poisonous species in the basket', 'It will be rejected at the market, and your reputation will suffer.', 'bad');
@@ -931,6 +937,37 @@ export class Game {
 
   private updateTarget() {
     this.target = this.findTarget();
+    const t = this.target;
+    if (t && !t.announced && isExtraordinary(t)) {
+      t.announced = true;
+      recordDiscovery(t, this.biomeId, this.weather?.kind ?? '');
+      this.announceSpecimen(t);
+    }
+  }
+
+  private announceSpecimen(m: MushroomEntity) {
+    const rarity = m.rarity as Rarity;
+    const known = m.identified || speciesRecord(m.species.id).discovered;
+    const name = known ? `${m.species.sk} <i>${m.species.sci}</i>` : 'Unknown species';
+    const card = document.createElement('div');
+    card.className = `discovery-card r${rarity}`;
+    card.style.setProperty('--rc', RARITY_COLOR[rarity]);
+    const kg = m.weightG >= 1000 ? `${(m.weightG / 1000).toFixed(2)} kg` : `${m.weightG} g`;
+    card.innerHTML = `
+      <div class="dc-kicker">Remarkable find</div>
+      <div class="dc-rarity">${RARITY_NAME[rarity]}</div>
+      ${m.special ? `<div class="dc-kind">${KIND_LABEL[m.special]}</div>` : ''}
+      <div class="dc-name">${name}</div>
+      <div class="dc-stats">
+        <span><b>${m.sizeCm.toFixed(1)} cm</b><em>Cap</em></span>
+        <span><b>${m.heightCm.toFixed(1)} cm</b><em>Height</em></span>
+        <span><b>≈ ${kg}</b><em>Weight</em></span>
+        ${m.bodies > 1 ? `<span><b>${m.bodies}</b><em>Fruit bodies</em></span>` : ''}
+      </div>`;
+    document.getElementById('toast-root')?.appendChild(card);
+    this.audio.sfx(rarity >= 4 ? 'levelup' : 'achievement');
+    window.setTimeout(() => card.classList.add('out'), rarity >= 4 ? 6500 : 4500);
+    window.setTimeout(() => card.remove(), rarity >= 4 ? 7300 : 5300);
   }
 
   private updateAtmosphere() {

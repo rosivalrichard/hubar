@@ -145,6 +145,7 @@ export class Menus {
             <button data-act="continue" class="nav-item ${run ? '' : 'disabled'}">${icon('leaf', 18)}<span>Continue in the forest</span>${run ? `<em>${BIOME_BY_ID[run.biome]?.name || ''}</em>` : '<em>no active walk</em>'}</button>
             <button data-act="encyclopedia" class="nav-item">${icon('book', 18)}<span>Encyclopedia</span><em>${disc} / ${SPECIES_COUNT}</em></button>
             <button data-act="collections" class="nav-item">${icon('basket', 18)}<span>Collections</span><em>${disc} found</em></button>
+            <button data-act="museum" class="nav-item">${icon('star', 18)}<span>Museum</span><em>${S.museum.length} exhibits</em></button>
             <button data-act="challenges" class="nav-item">${icon('target', 18)}<span>Challenges</span><em>${S.stats.challengesCompleted} done</em></button>
             <button data-act="achievements" class="nav-item">${icon('star', 18)}<span>Achievements</span><em>${Object.keys(S.achievements).length} / ${ACHIEVEMENTS.length}</em></button>
             <button data-act="market" class="nav-item">${icon('coin', 18)}<span>Market &amp; equipment</span><em>${S.basket.length} in basket</em></button>
@@ -249,6 +250,7 @@ export class Menus {
         else if (act === 'continue') this.continueRun();
         else if (act === 'encyclopedia') this.library.show('encyclopedia');
         else if (act === 'collections') this.library.show('collections');
+        else if (act === 'museum') this.library.show('museum');
         else if (act === 'challenges') this.library.show('challenges');
         else if (act === 'achievements') this.library.show('achievements');
         else if (act === 'market') this.library.show('market');

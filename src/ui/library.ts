@@ -2,6 +2,8 @@
 
 import { el, icon } from './dom';
 import { isSk, LOCALE } from '../i18n';
+import { RARITY_NAME, RARITY_COLOR, KIND_LABEL, type Rarity, type SpecialKind } from '../game/specimens';
+import { WEATHER_LABEL, type WeatherKind } from '../game/weather';
 import {
   S,
   ACHIEVEMENTS,
@@ -26,7 +28,7 @@ import { buildMarket } from './market';
 import { buildQuiz } from './quiz';
 import { formatMoney } from '../core/util';
 
-export type LibraryKind = 'encyclopedia' | 'collections' | 'challenges' | 'achievements' | 'market' | 'knowledge';
+export type LibraryKind = 'encyclopedia' | 'collections' | 'museum' | 'challenges' | 'achievements' | 'market' | 'knowledge';
 
 export class Library {
   onBack: () => void;
@@ -63,6 +65,7 @@ export class Library {
     const items: { id: LibraryKind; label: string; icon: string }[] = [
       { id: 'encyclopedia', label: 'Encyclopedia', icon: 'book' },
       { id: 'collections', label: 'Collections', icon: 'basket' },
+      { id: 'museum', label: 'Museum', icon: 'star' },
       { id: 'challenges', label: 'Challenges', icon: 'target' },
       { id: 'achievements', label: 'Achievements', icon: 'star' },
       { id: 'market', label: 'Market', icon: 'coin' },
@@ -96,6 +99,7 @@ export class Library {
     const root = el('div', { class: 'screen library-screen' });
     if (kind === 'encyclopedia') return this.encyclopedia(root);
     if (kind === 'collections') return this.collections(root);
+    if (kind === 'museum') return this.museum(root);
     if (kind === 'challenges') return this.challenges(root);
     return this.achievements(root);
   }
@@ -319,6 +323,72 @@ export class Library {
   }
 
   /* ------------------------------------------------------------------ */
+
+  private museum(root: HTMLElement): HTMLElement {
+    const r = S.records;
+    const sp = (id: string) => (id ? SPECIES_BY_ID[id] : null);
+    const recCell = (label: string, value: string, id: string) =>
+      `<div class="mus-rec"><em>${label}</em><b>${value}</b><span>${id && speciesRecord(id).discovered ? sp(id)?.sk : '—'}</span></div>`;
+    const weight = (g: number) => (g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${g} g`);
+    const unusual = S.museum.find((e) => e.id === r.mostUnusual);
+    let filter = 0;
+    root.innerHTML = `
+      <div class="screen-bg soft"></div>
+      <div class="library sheet">
+        ${this.head('Museum', 'Extraordinary finds', `<div class="head-count">${S.museum.length} exhibits</div>`)}
+        <div class="mus-records">
+          ${recCell('Largest mushroom', r.largestCapCm ? `${r.largestCapCm.toFixed(1)} cm` : '—', r.largestCapSpecies)}
+          ${recCell('Heaviest mushroom', r.heaviestG ? weight(r.heaviestG) : '—', r.heaviestSpecies)}
+          ${recCell('Rarest find', r.rarest ? RARITY_NAME[r.rarest as Rarity] : '—', r.rarestSpecies)}
+          ${recCell('Largest cluster', r.largestCluster ? `${r.largestCluster}` : '—', r.largestClusterSpecies)}
+          ${recCell('Most unusual', unusual ? (unusual.special ? KIND_LABEL[unusual.special as Exclude<SpecialKind, null>] : RARITY_NAME[unusual.rarity as Rarity]) : '—', unusual?.speciesId ?? '')}
+          ${recCell('Species discovered', `${S.stats.speciesDiscovered} / ${SPECIES_COUNT}`, '')}
+          ${recCell('Mushrooms collected', `${S.stats.mushroomsCollected}`, '')}
+        </div>
+        <div class="collection-filters chips compact">
+          <button class="chip on" data-rf="0">All</button>
+          ${[5, 4, 3, 2].map((x) => `<button class="chip" data-rf="${x}" style="--rc:${RARITY_COLOR[x as Rarity]}">${RARITY_NAME[x as Rarity]}</button>`).join('')}
+        </div>
+        <div class="album-grid mus-grid"></div>
+        <div class="collection-foot"><span>Every extraordinary specimen you find is saved here automatically — even the ones you leave in the forest.</span></div>
+      </div>
+    `;
+    const grid = root.querySelector('.mus-grid') as HTMLElement;
+    const render = () => {
+      grid.innerHTML = '';
+      const list = S.museum.filter((e) => !filter || e.rarity === filter).sort((a, b) => b.rarity - a.rarity || b.weightG - a.weightG);
+      if (!list.length) {
+        grid.innerHTML = `<div class="mus-empty">No exhibits yet. Rare specimens — giants, fused twins, huge clusters — appear once in a while. Look closely; rain and the right season help.</div>`;
+        return;
+      }
+      for (const e of list) {
+        const s2 = SPECIES_BY_ID[e.speciesId];
+        if (!s2) continue;
+        const known = e.identified || speciesRecord(e.speciesId).discovered;
+        const card = el('div', { class: 'album-card found mus-card' });
+        card.style.setProperty('--rc', RARITY_COLOR[e.rarity as Rarity]);
+        const d = new Date(e.date);
+        card.innerHTML = `
+          <div class="album-plate"><img loading="lazy" src="${speciesPlate(e.speciesId, 'side', 256)}" alt="${s2.sci}" /><span class="mus-badge">${RARITY_NAME[e.rarity as Rarity]}</span></div>
+          <div class="album-name">${known ? s2.sci : 'Unknown species'}<span>${known ? s2.sk : '—'}${e.special ? ` · ${KIND_LABEL[e.special as Exclude<SpecialKind, null>]}` : ''}</span></div>
+          <div class="mus-dims"><span>Ø ${e.capCm.toFixed(1)} cm</span><span>${e.heightCm.toFixed(1)} cm</span><span>≈ ${weight(e.weightG)}</span>${e.bodies > 1 ? `<span>×${e.bodies}</span>` : ''}</div>
+          <div class="album-meta"><span>${BIOME_BY_ID[e.biome as BiomeId]?.name ?? e.biome}</span><em>${d.toLocaleDateString(LOCALE)}</em></div>
+          <div class="album-meta"><span>${WEATHER_LABEL[e.weather as WeatherKind] ?? ''}</span><em>${e.collected ? 'collected' : 'left in the forest'}</em></div>`;
+        grid.appendChild(card);
+      }
+    };
+    root.querySelectorAll<HTMLElement>('[data-rf]').forEach((b) =>
+      b.addEventListener('click', () => {
+        filter = Number(b.dataset.rf);
+        this.sfx();
+        root.querySelectorAll('[data-rf]').forEach((x) => x.classList.toggle('on', x === b));
+        render();
+      })
+    );
+    this.wireShell(root);
+    render();
+    return root;
+  }
 
   private collections(root: HTMLElement): HTMLElement {
     let filter: BiomeId | 'all' = 'all';

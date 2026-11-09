@@ -83,7 +83,8 @@ function bumpFrom(canvas: HTMLCanvasElement, strength = 1): THREE.Texture {
   const d = img.data;
   for (let i = 0; i < d.length; i += 4) {
     let l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-    l = clamp(128 + (l - 128) * 1.6 * strength, 0, 255);
+    // dither: smooth 8-bit gradients otherwise turn into terraced "contour line" rings under bump lighting
+    l = clamp(128 + (l - 128) * 1.6 * strength + (Math.random() - 0.5) * 3, 0, 255);
     d[i] = d[i + 1] = d[i + 2] = l;
     d[i + 3] = 255;
   }
@@ -919,6 +920,11 @@ function drawHymenium(
   ctx.globalAlpha = 1;
 }
 
+function smoothstepT(a: number, b: number, x: number) {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
 function drawStem(
   ctx: CanvasRenderingContext2D,
   sp: Species,
@@ -953,27 +959,50 @@ function drawStem(
       ctx.fill();
     }
   } else if (v.stemSurface === 'reticulate') {
-    ctx.globalAlpha = 0.55;
-    ctx.strokeStyle = shade(v.stemColor, 0.35);
-    for (let i = 0; i < 14; i++) {
-      const y = (i / 14) * size;
-      ctx.lineWidth = rng.range(1.5, 3.5);
-      ctx.beginPath();
-      for (let x = 0; x <= size; x += 8) {
-        const yy = y + Math.sin(x * 0.06 + i) * 8;
-        if (x === 0) ctx.moveTo(x, yy);
-        else ctx.lineTo(x, yy);
+    // Raised net (reticulum) of elongated polygonal meshes. Canvas top = stem apex.
+    // Cep: pale net on a tan ground in the upper part; summer cep: over the whole stem;
+    // bitter bolete: coarse dark net on a pale ground.
+    const darkNet = sp.id === 'tilopilus-felleus';
+    const reach = sp.id === 'boletus-reticulatus' ? 0.95 : sp.id === 'boletus-aereus' ? 0.75 : 0.5;
+    const ground = ctx.createLinearGradient(0, 0, 0, size);
+    ground.addColorStop(0, shade(darkNet ? v.stemColor : v.stemColor2, darkNet ? 0 : -0.08));
+    ground.addColorStop(reach, shade(v.stemColor2, 0.05));
+    ground.addColorStop(Math.min(1, reach + 0.15), 'rgba(0,0,0,0)');
+    ctx.globalAlpha = darkNet ? 0.2 : 0.55;
+    ctx.fillStyle = ground;
+    ctx.fillRect(0, 0, size, size);
+    const cw = darkNet ? 14 : 10;
+    const ch = darkNet ? 22 : 16;
+    const cols = Math.ceil(size / cw) + 1;
+    const rows = Math.ceil(size / ch) + 1;
+    const pts: [number, number][][] = [];
+    for (let r = 0; r < rows; r++) {
+      const row: [number, number][] = [];
+      for (let c = 0; c < cols; c++) {
+        row.push([c * cw + (r % 2 ? cw / 2 : 0) + rng.range(-2.5, 2.5), r * ch + rng.range(-3, 3)]);
       }
-      ctx.stroke();
+      pts.push(row);
     }
-    ctx.strokeStyle = shade(v.stemColor2, -0.1);
-    ctx.globalAlpha = 0.35;
-    for (let i = 0; i < 8; i++) {
-      ctx.beginPath();
-      ctx.moveTo(rng.f() * size, 0);
-      ctx.lineTo(rng.f() * size, size);
-      ctx.stroke();
+    ctx.strokeStyle = darkNet ? shade(v.stemColor2, -0.45) : shade(v.stemColor, 0.25);
+    ctx.lineCap = 'round';
+    for (let r = 0; r < rows - 1; r++) {
+      const fade = 1 - smoothstepT(reach * 0.7, reach + 0.08, (r * ch) / size);
+      if (fade <= 0.02) continue;
+      for (let c = 0; c < cols; c++) {
+        const p = pts[r][c];
+        const down1 = pts[r + 1][c];
+        const down2 = pts[r + 1][r % 2 ? Math.min(cols - 1, c + 1) : Math.max(0, c - 1)];
+        ctx.globalAlpha = (darkNet ? 0.7 : 0.85) * fade;
+        ctx.lineWidth = darkNet ? 1.8 : 1.3;
+        ctx.beginPath();
+        ctx.moveTo(p[0], p[1]);
+        ctx.lineTo(down1[0], down1[1]);
+        ctx.moveTo(p[0], p[1]);
+        ctx.lineTo(down2[0], down2[1]);
+        ctx.stroke();
+      }
     }
+    ctx.globalAlpha = 1;
   } else if (v.stemSurface === 'banded') {
     for (let i = 0; i < 24; i++) {
       ctx.globalAlpha = rng.range(0.15, 0.45);
@@ -1008,6 +1037,13 @@ function drawStem(
   ctx.globalAlpha = 1;
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, size, size);
+}
+
+/** Detail maps store (pixel / tile base colour) * DETAIL_SCALE; materials multiply by 1 / DETAIL_SCALE. */
+export const DETAIL_SCALE = 0.5;
+
+function hymenBase(sp: Species) {
+  return sp.visual.hymenColor;
 }
 
 export function mushroomAtlas(sp: Species, variant: number): TexPair {
@@ -1062,8 +1098,26 @@ export function mushroomAtlas(sp: Species, variant: number): TexPair {
   }
   ctx.globalAlpha = 1;
 
-  const map = toTexture(c, true, false);
   const bump = bumpFrom(c, 1.1);
+  // The mesh already carries absolute colour in its vertex colours. Using this atlas as a plain colour map
+  // multiplied the colour twice (cap colour squared → muddy, near-black boletes). Store it as a *detail* map:
+  // each tile divided by its own base colour, scaled into 0..1 by DETAIL_SCALE; the material multiplies it back.
+  const detail = makeCanvas(S);
+  const dctx = ctx2d(detail);
+  dctx.drawImage(c, 0, 0);
+  const img = dctx.getImageData(0, 0, S, S);
+  const bases = [sp.visual.capColor, hymenBase(sp), sp.visual.stemColor, sp.visual.fleshColor].map(hexRgb);
+  const d = img.data;
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const tileIdx = (y < T ? 0 : 2) + (x < T ? 0 : 1); // cap, hymenium, stem, extra
+      const b = bases[tileIdx];
+      const i = (y * S + x) * 4;
+      for (let k = 0; k < 3; k++) d[i + k] = Math.min(255, Math.round((d[i + k] / Math.max(24, b[k])) * 255 * DETAIL_SCALE));
+    }
+  }
+  dctx.putImageData(img, 0, 0);
+  const map = toTexture(detail, false, false);
   canvasCache.set(key, map);
   canvasCache.set(key + ':bump', bump);
   return { map, bump };

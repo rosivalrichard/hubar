@@ -7,6 +7,7 @@ import type { Biome } from '../data/biomes';
 import type { Forest, HostTree } from '../three/forest';
 import { buildMushroomVisual, GrowthStage, MushroomVisual } from '../three/mushroom';
 import { RNG, TAU, clamp, lerp, strSeed, smoothstep, pickWeighted, monthOf } from '../core/util';
+import { rollSpecimen, estimateWeight, stemHeightCm, type Rarity, type SpecialKind, type SpecimenRoll } from './specimens';
 
 export interface MushroomEntity {
   uid: number;
@@ -25,7 +26,17 @@ export interface MushroomEntity {
   photographed: boolean;
   collected: boolean;
   spawnTime: number;
+  rarity: Rarity;
+  special: SpecialKind;
+  weightG: number;
+  heightCm: number;
+  bodies: number;
+  hidden: number;
+  announced: boolean;
 }
+
+/** Cap diameter the base geometry is modelled at (see buildCap). */
+export const refDiameter = (sp: Species) => lerp(sp.visual.capDiameter[0], sp.visual.capDiameter[1], 0.62);
 
 export interface SpawnContext {
   biome: Biome;
@@ -176,6 +187,30 @@ export class MushroomField {
     return null;
   }
 
+  private roll(sp: Species): SpecimenRoll {
+    return rollSpecimen(sp, this.rng, {
+      wetness: this.ctx.wetness,
+      temperature: this.ctx.temperature,
+      month: this.month(),
+      biomeFit: sp.biomes.includes(this.ctx.biome.id),
+    });
+  }
+
+  private specimenFields(sp: Species, diameter: number, scale: number, roll: SpecimenRoll) {
+    const capCm = Math.round(diameter * roll.sizeMul * roll.shape.capMul * 10) / 10;
+    const bodies = roll.shape.count ?? 1;
+    return {
+      sizeCm: capCm,
+      rarity: roll.rarity,
+      special: roll.kind,
+      weightG: estimateWeight(sp, capCm, roll.shape, bodies),
+      heightCm: Math.round(stemHeightCm(sp, scale, roll.shape) * 10) / 10,
+      bodies,
+      hidden: roll.hidden,
+      announced: false,
+    };
+  }
+
   private validGround(x: number, z: number) {
     if (this.forest.slopeAt(x, z) > 1.15) return false;
     if (this.forest.isPath(x, z, 0.8)) return false;
@@ -211,14 +246,15 @@ export class MushroomField {
         const baseY = this.forest.heightAt(x, z);
         const y = Math.max(baseY, anchor.pos.y - 0.05) + 0.008;
         const stage = this.pickStage();
-        const diameter = lerp(sp.visual.capDiameter[0], sp.visual.capDiameter[1], Math.pow(this.rng.f(), 1.6));
-        const maxD = sp.visual.capDiameter[1];
-        let scale = clamp(diameter / maxD, 0.25, 1.15);
-        if (stage === 'young') scale *= 0.82;
-        if (stage === 'old') scale *= 1.04;
-        if (this.ctx.biome.id === 'mountain') scale *= 0.92;
+        const roll = this.roll(sp);
+        let diameter = lerp(sp.visual.capDiameter[0], sp.visual.capDiameter[1], Math.pow(this.rng.f(), 1.6));
+        if (stage === 'young') diameter *= 0.82;
+        if (stage === 'old') diameter *= 1.04;
+        if (this.ctx.biome.id === 'mountain') diameter *= 0.92;
+        const scale = clamp(diameter / refDiameter(sp), 0.25, 1.4) * roll.sizeMul;
         const variant = this.rng.int(0, 2);
-        const visual = buildMushroomVisual(sp, stage, variant, wetness > 0.55, scale);
+        const visual = buildMushroomVisual(sp, stage, variant, wetness > 0.55, scale, roll.shape);
+        const hiddenDrop = (roll.hidden * stemHeightCm(sp, scale, roll.shape)) / 100;
         const normal = this.forest.groundNormal(x, z);
         const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
         const tilt = new THREE.Quaternion().setFromAxisAngle(
@@ -226,7 +262,7 @@ export class MushroomField {
           this.rng.range(-0.18, 0.18)
         );
         visual.group.quaternion.copy(q).multiply(tilt);
-        visual.group.position.set(x, y, z);
+        visual.group.position.set(x, y - hiddenDrop, z);
         visual.group.name = 'mushroom';
         visual.mesh.userData.uid = this.mushrooms.length + 1;
         this.group.add(visual.group);
@@ -237,7 +273,7 @@ export class MushroomField {
           stage,
           variant,
           scale,
-          sizeCm: diameter,
+          ...this.specimenFields(sp, diameter, scale, roll),
           visual,
           position: new THREE.Vector3(x, y, z),
           normal,
@@ -299,10 +335,11 @@ export class MushroomField {
       const anchor = this.anchorFor(chosen.sp);
       if (!anchor) continue;
       const y = this.forest.heightAt(anchor.pos.x, anchor.pos.z) + 0.008;
-      const diameter = lerp(chosen.sp.visual.capDiameter[0], chosen.sp.visual.capDiameter[1], 0.5);
-      const scale = clamp(diameter / chosen.sp.visual.capDiameter[1], 0.3, 1.1);
+      const diameter = lerp(chosen.sp.visual.capDiameter[0], chosen.sp.visual.capDiameter[1], 0.5) * 0.82;
+      const roll = this.roll(chosen.sp);
+      const scale = clamp(diameter / refDiameter(chosen.sp), 0.3, 1.3) * roll.sizeMul;
       const variant = this.rng.int(0, 2);
-      const visual = buildMushroomVisual(chosen.sp, 'young', variant, true, scale);
+      const visual = buildMushroomVisual(chosen.sp, 'young', variant, true, scale, roll.shape);
       visual.group.position.set(anchor.pos.x, y, anchor.pos.z);
       visual.group.rotation.y = this.rng.f() * TAU;
       this.group.add(visual.group);
@@ -313,7 +350,7 @@ export class MushroomField {
         stage: 'young',
         variant,
         scale,
-        sizeCm: diameter,
+        ...this.specimenFields(chosen.sp, diameter, scale, roll),
         visual,
         position: new THREE.Vector3(anchor.pos.x, y, anchor.pos.z),
         normal: this.forest.groundNormal(anchor.pos.x, anchor.pos.z),

@@ -1,6 +1,7 @@
 /* Persistent player state: XP, levels, encyclopedia, basket, market, equipment,
    achievements and challenges. Saved to localStorage with schema merging. */
 
+import { RARITY_VALUE, type Rarity } from './specimens';
 import { ALL_SPECIES, SPECIES_BY_ID, isEdible, isDangerous } from '../data/species';
 import type { Species } from '../data/species-types';
 import { BIOMES, BIOME_BY_ID, type BiomeId } from '../data/biomes';
@@ -27,6 +28,8 @@ export interface BasketItem {
   stage: string;
   collectedAt: number;
   wet: boolean;
+  rarity?: number;
+  weightG?: number;
 }
 
 export interface SpeciesRecord {
@@ -111,6 +114,31 @@ export interface Records {
   longestStreak: number;
   knowledgeBest: number;
   bestBoleteCm: number;
+  largestCapCm: number;
+  largestCapSpecies: string;
+  heaviestG: number;
+  heaviestSpecies: string;
+  rarest: number;
+  rarestSpecies: string;
+  largestCluster: number;
+  largestClusterSpecies: string;
+  mostUnusual: string; // museum entry id
+}
+
+export interface MuseumEntry {
+  id: string;
+  speciesId: string;
+  date: string; // ISO
+  biome: string;
+  weather: string;
+  capCm: number;
+  heightCm: number;
+  weightG: number;
+  rarity: number;
+  special: string | null;
+  bodies: number;
+  identified: boolean;
+  collected: boolean;
 }
 
 export interface SaveState {
@@ -130,6 +158,7 @@ export interface SaveState {
   stats: Stats;
   settings: Settings;
   records: Records;
+  museum: MuseumEntry[];
   run: RunState | null;
   provisions: number;
   lastPlayed: string;
@@ -259,7 +288,12 @@ function defaults(): SaveState {
       dayLengthMinutes: 13,
       hints: true,
     },
-    records: { bestRunScore: 0, bestSale: 0, bestSpeciesCount: 0, longestStreak: 0, knowledgeBest: 0, bestBoleteCm: 0 },
+    records: {
+      bestRunScore: 0, bestSale: 0, bestSpeciesCount: 0, longestStreak: 0, knowledgeBest: 0, bestBoleteCm: 0,
+      largestCapCm: 0, largestCapSpecies: '', heaviestG: 0, heaviestSpecies: '', rarest: 0, rarestSpecies: '',
+      largestCluster: 0, largestClusterSpecies: '', mostUnusual: '',
+    },
+    museum: [],
     run: null,
     provisions: 2,
     lastPlayed: dateKey(),
@@ -385,7 +419,7 @@ export function basketValue() {
   return S.basket.reduce((sum, it) => {
     const sp = SPECIES_BY_ID[it.speciesId];
     if (!sp) return sum;
-    return sum + (isEdible(sp) ? sp.value * it.condition * (0.5 + 0.5 * it.sizeCm / sp.visual.capDiameter[1]) : 0);
+    return sum + (isEdible(sp) ? sp.value * it.condition * Math.min(2.5, 0.5 + 0.5 * it.sizeCm / sp.visual.capDiameter[1]) * RARITY_VALUE[(it.rarity ?? 1) as Rarity] : 0);
   }, 0);
 }
 
@@ -471,7 +505,7 @@ export function isBiomeUnlocked(id: BiomeId) {
 /* basket / market                                                     */
 /* ------------------------------------------------------------------ */
 
-export function addToBasket(sp: Species, opts: { sizeCm: number; stage: string; identified: boolean; claimedId: string | null; wet: boolean }): boolean {
+export function addToBasket(sp: Species, opts: { sizeCm: number; stage: string; identified: boolean; claimedId: string | null; wet: boolean; rarity?: number; weightG?: number }): boolean {
   if (S.basket.length >= basketCapacity()) {
     toast('Basket full', 'Sell your harvest or unlock the backpack.', 'bad');
     return false;
@@ -487,6 +521,8 @@ export function addToBasket(sp: Species, opts: { sizeCm: number; stage: string; 
     stage: opts.stage,
     collectedAt: Date.now(),
     wet: opts.wet,
+    rarity: opts.rarity ?? 1,
+    weightG: opts.weightG,
   };
   S.basket.push(item);
   S.stats.mushroomsCollected++;
@@ -552,7 +588,8 @@ export function sellBasket(): SaleResult {
       const avgSize = items.reduce((s, i) => s + i.sizeCm, 0) / items.length;
       const sizeFactor = clamp(avgSize / sp.visual.capDiameter[1], 0.35, 1.2);
       const avgCond = items.reduce((s, i) => s + i.condition, 0) / items.length;
-      unit = Math.round(sp.value * (0.55 + sizeFactor * 0.6) * avgCond * 100) / 100;
+      const avgRarity = items.reduce((s, i) => s + RARITY_VALUE[(i.rarity ?? 1) as Rarity], 0) / items.length;
+      unit = Math.round(sp.value * (0.55 + sizeFactor * 0.6) * avgCond * avgRarity * 100) / 100;
       result.earnings += unit * items.length;
     } else {
       result.poisonCount += items.length;

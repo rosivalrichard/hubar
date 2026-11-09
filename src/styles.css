@@ -765,3 +765,31 @@ p { margin: 0; }
 .t-main { grid-column: 2; grid-row: 2; width: 76px; height: 76px; border-color: rgba(201, 164, 90, 0.75); color: var(--gold-bright, #e2c27a); font-size: 12px; }
 #inspect-root { position: fixed; inset: 0; z-index: 25; pointer-events: none; }
 .hud.inspecting { opacity: 0; pointer-events: none; transition: opacity .2s; }
+
+/* rare discovery card */
+.discovery-card { position: fixed; left: 50%; top: calc(86px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 45; width: min(380px, calc(100vw - 32px)); padding: 16px 18px 14px; background: linear-gradient(180deg, rgba(14, 18, 13, 0.94), rgba(8, 11, 8, 0.94)); border: 1px solid var(--rc); box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 18px 50px rgba(0,0,0,.55), 0 0 34px color-mix(in srgb, var(--rc) 28%, transparent); text-align: center; pointer-events: none; animation: dcIn .5s cubic-bezier(.2,.8,.2,1); }
+.discovery-card.out { opacity: 0; transform: translate(-50%, -10px); transition: opacity .7s, transform .7s; }
+@keyframes dcIn { from { opacity: 0; transform: translate(-50%, -14px) scale(.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+.dc-kicker { font-size: 9px; letter-spacing: .26em; text-transform: uppercase; color: var(--faint); }
+.dc-rarity { font-family: var(--serif); font-size: 30px; color: var(--rc); margin-top: 4px; letter-spacing: .02em; }
+.r5 .dc-rarity { text-shadow: 0 0 18px color-mix(in srgb, var(--rc) 60%, transparent); }
+.dc-kind { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--parchment-dim); margin-top: 2px; }
+.dc-name { font-family: var(--serif); font-size: 15px; color: var(--parchment); margin-top: 8px; }
+.dc-name i { color: var(--faint); font-size: 12px; margin-left: 4px; }
+.dc-stats { display: flex; justify-content: center; gap: 18px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.dc-stats span { display: flex; flex-direction: column; gap: 2px; }
+.dc-stats b { font-weight: 500; font-size: 14px; color: var(--parchment); }
+.dc-stats em { font-style: normal; font-size: 8px; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+
+/* museum */
+.mus-records { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); margin: 6px 0 18px; }
+.mus-rec { background: rgba(10, 14, 10, 0.86); padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; }
+.mus-rec em { font-style: normal; font-size: 8px; letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }
+.mus-rec b { font-family: var(--serif); font-weight: 400; font-size: 20px; color: var(--parchment); }
+.mus-rec span { font-size: 9px; color: var(--muted); }
+.mus-card { border-color: color-mix(in srgb, var(--rc) 55%, var(--line)); }
+.mus-card .album-plate { position: relative; }
+.mus-badge { position: absolute; top: 8px; left: 8px; font-size: 8px; letter-spacing: .14em; text-transform: uppercase; padding: 3px 6px; color: #0b100d; background: var(--rc); }
+.mus-dims { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 0 10px 6px; font-size: 10px; color: var(--parchment-dim); }
+.mus-empty { grid-column: 1 / -1; padding: 28px; border: 1px dashed var(--line); color: var(--muted); font-family: var(--serif); font-style: italic; font-size: 13px; text-align: center; }
+.chip[style*="--rc"].on { border-color: var(--rc); color: var(--rc); }
