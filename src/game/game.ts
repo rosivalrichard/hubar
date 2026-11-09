@@ -1,4 +1,5 @@
 import { tr } from '../i18n';
+import { IS_TOUCH, TouchControls } from '../ui/touch';
 /* HUBÁR — game orchestrator: world lifecycle, player, interaction, modes. */
 
 import * as THREE from 'three';
@@ -78,6 +79,7 @@ export class Game {
   softwareGL = false;
 
   private clock = new THREE.Timer();
+  private touch: TouchControls | null = null;
   private flashlight: THREE.SpotLight;
   private flashlightOn = false;
   private elapsed = 0;
@@ -146,6 +148,13 @@ export class Game {
     this.player.onFootstep = (surface, running) => this.audio.footstep(surface, running);
     this.input.onLockChange = (locked) => this.handleLock(locked);
     this.input.onKeyDown = (code) => this.handleKey(code);
+    if (IS_TOUCH) {
+      this.input.virtualLock = true;
+      this.touch = new TouchControls(this.input, this.canvas, () => this.state, (dx, dy) => {
+        this.inspectYaw -= dx * 0.0075;
+        this.inspectPitch = clamp(this.inspectPitch + dy * 0.005, -1.02, 1.2);
+      });
+    }
 
     this.canvas.addEventListener('mousedown', (e) => {
       if (this.state === 'inspect') {
@@ -210,7 +219,7 @@ export class Game {
   }
 
   private promptOrientation() {
-    if (window.innerWidth < 760) {
+    if (window.innerWidth < 760 && !IS_TOUCH) {
       toast('A desktop forest', 'HUBÁR is designed for a mouse and keyboard. A larger screen gives the forest room to breathe.', 'info');
     }
   }
@@ -399,7 +408,7 @@ export class Game {
         <h2>${biome.name}</h2>
         <p>${biome.tagline}. ${this.weather?.label}, ${Math.round(this.weather?.temperature ?? 12)}°C.</p>
         <button class="btn primary lg enter-btn">Enter the forest</button>
-        <div class="enter-keys"><span>WASD walk</span><span>Shift run</span><span>Ctrl crouch</span><span>E examine</span><span>Esc pause</span></div>
+        <div class="enter-keys">${IS_TOUCH ? '<span>Left stick walk</span><span>Drag to look</span><span>Stick to the edge run</span><span>Examine · Pick</span><span>II pause</span>' : '<span>WASD walk</span><span>Shift run</span><span>Ctrl crouch</span><span>E examine</span><span>Esc pause</span>'}</div>
         <div class="enter-safety">A simulation, not a field guide. Never eat a wild mushroom on the strength of a game.</div>
       </div>
     `;
@@ -824,6 +833,7 @@ export class Game {
     requestAnimationFrame(this.tick);
     this.clock.update();
     const dt = Math.min(0.05, this.clock.getDelta());
+    this.touch?.update();
     this.elapsed += dt;
 
     if (this.state === 'menu') {

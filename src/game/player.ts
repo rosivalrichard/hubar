@@ -96,18 +96,20 @@ export class Player {
     if (this.input.isDown('KeyS') || this.input.isDown('ArrowDown')) forward -= 1;
     if (this.input.isDown('KeyD') || this.input.isDown('ArrowRight')) strafe += 1;
     if (this.input.isDown('KeyA') || this.input.isDown('ArrowLeft')) strafe -= 1;
+    forward -= this.input.moveY;
+    strafe += this.input.moveX;
     const wantsCrouch = this.input.isDown('ControlLeft') || this.input.isDown('KeyC');
     this.crouching = wantsCrouch;
     const wantsRun = (this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight')) && !this.crouching && this.stamina > 2;
 
     const moveLen = Math.hypot(forward, strafe);
-    const norm = moveLen > 0 ? 1 / moveLen : 0;
+    const norm = moveLen > 1 ? 1 / moveLen : moveLen > 0.08 ? 1 : 0; // analog stick: partial tilt = slower walk
     const dir = new THREE.Vector3(
       Math.sin(this.yaw) * -forward * norm + Math.cos(this.yaw) * strafe * norm,
       0,
       Math.cos(this.yaw) * -forward * norm - Math.sin(this.yaw) * strafe * norm
     );
-    this.moving = moveLen > 0;
+    this.moving = moveLen > 0.08;
 
     let baseSpeed = this.crouching ? 1.05 : wantsRun ? 5.1 : 2.65;
     baseSpeed *= 1 + this.bootsBonus * 0.035;

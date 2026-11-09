@@ -1105,5 +1105,14 @@ export const SK: Record<string, string> = {
  "spring": "jar",
  "summer": "leto",
  "winter": "zima",
- "Level {0} — {1}": "Úroveň {0} — {1}"
+ "Level {0} — {1}": "Úroveň {0} — {1}",
+ "Pick": "Zobrať",
+ "Examine": "Prezrieť",
+ "Pause": "Pauza",
+ "Crouch": "Podrep",
+ "Left stick walk": "Ľavá páčka – chôdza",
+ "Drag to look": "Ťahaním sa rozhliadaš",
+ "Stick to the edge run": "Páčka až po okraj – beh",
+ "Examine · Pick": "Prezrieť · Zobrať",
+ "II pause": "II pauza"
 };

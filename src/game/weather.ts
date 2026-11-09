@@ -264,8 +264,9 @@ export class WeatherSystem {
       this.mist = target.mist;
       this.wind = target.wind;
     }
+    const changed = this.kind !== kind;
     this.kind = kind;
-    this.onChange?.(kind);
+    if (changed) this.onChange?.(kind); // update() re-applies every frame: notify only on a real change
   }
 
   rollForecast() {
@@ -285,11 +286,7 @@ export class WeatherSystem {
 
   setWeather(kind: WeatherKind, instant = false) {
     this.targetKind = kind;
-    if (instant) {
-      this.applyWeatherParams(kind, true);
-    } else {
-      this.onChange?.(kind);
-    }
+    if (instant) this.applyWeatherParams(kind, true);
     this.rollForecast();
   }
 

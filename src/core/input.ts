@@ -12,6 +12,11 @@ export class Input {
   onKeyDown: ((code: string) => void) | null = null;
   sensitivity = 1;
   invertY = false;
+  /** Analog movement from the touch joystick, -1..1 (moveY < 0 = forward). */
+  moveX = 0;
+  moveY = 0;
+  /** Touch devices have no pointer lock: lock is emulated. */
+  virtualLock = false;
 
   private el: HTMLElement;
   private handlers: { target: EventTarget; type: string; fn: EventListener }[] = [];
@@ -66,7 +71,20 @@ export class Input {
     }) as EventListener);
   }
 
+  /** Synthetic key press (touch buttons). */
+  press(code: string) {
+    this.pressedKeys.add(code);
+    this.onKeyDown?.(code);
+  }
+
   requestLock() {
+    if (this.virtualLock) {
+      if (!this.locked) {
+        this.locked = true;
+        setTimeout(() => this.onLockChange?.(true), 0);
+      }
+      return;
+    }
     if (document.pointerLockElement !== this.el) {
       const p = this.el.requestPointerLock?.() as unknown as Promise<void> | undefined;
       if (p && typeof p.catch === 'function') p.catch(() => {});
@@ -74,6 +92,13 @@ export class Input {
   }
 
   exitLock() {
+    if (this.virtualLock) {
+      if (this.locked) {
+        this.locked = false;
+        setTimeout(() => this.onLockChange?.(false), 0);
+      }
+      return;
+    }
     if (document.pointerLockElement === this.el) document.exitPointerLock?.();
   }
 
