@@ -4,6 +4,7 @@ import { el, icon } from './dom';
 import { isSk, LOCALE } from '../i18n';
 import { RARITY_NAME, RARITY_COLOR, KIND_LABEL, type Rarity, type SpecialKind } from '../game/specimens';
 import { WEATHER_LABEL, type WeatherKind } from '../game/weather';
+import { WILDLIFE_IDS, WILDLIFE_NAME } from '../game/wildlife';
 import {
   S,
   ACHIEVEMENTS,
@@ -345,6 +346,14 @@ export class Library {
           ${recCell('Species discovered', `${S.stats.speciesDiscovered} / ${SPECIES_COUNT}`, '')}
           ${recCell('Mushrooms collected', `${S.stats.mushroomsCollected}`, '')}
         </div>
+        <div class="mus-section-title">Wildlife journal <em>${Object.keys(S.wildlife).length} / ${WILDLIFE_IDS.length}</em></div>
+        <div class="wild-grid">
+          ${WILDLIFE_IDS.map((w) => {
+            const rec = S.wildlife[w];
+            return `<div class="wild-cell ${rec ? 'seen' : ''}"><b>${rec ? WILDLIFE_NAME[w] : '?'}</b><span>${rec ? `${rec.count}× · ${new Date(rec.first).toLocaleDateString(LOCALE)}` : 'not yet seen'}</span></div>`;
+          }).join('')}
+        </div>
+        <div class="mus-section-title">Exhibits</div>
         <div class="collection-filters chips compact">
           <button class="chip on" data-rf="0">All</button>
           ${[5, 4, 3, 2].map((x) => `<button class="chip" data-rf="${x}" style="--rc:${RARITY_COLOR[x as Rarity]}">${RARITY_NAME[x as Rarity]}</button>`).join('')}

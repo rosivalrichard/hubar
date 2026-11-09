@@ -1,6 +1,7 @@
 /* Museum of extraordinary finds and personal specimen records. */
 
-import { S, saveSoon, toast } from './state';
+import { S, saveSoon, toast, addXP } from './state';
+import { WILDLIFE_NAME, type WildlifeId } from './wildlife';
 import { SPECIES_BY_ID } from '../data/species';
 import type { MushroomEntity } from './spawner';
 import type { MuseumEntry } from './state';
@@ -94,4 +95,15 @@ function updateUnusual() {
 export function museumSpeciesName(e: MuseumEntry) {
   const sp = SPECIES_BY_ID[e.speciesId];
   return sp ? { sci: sp.sci, sk: sp.sk } : { sci: e.speciesId, sk: '' };
+}
+
+/** Wildlife journal: every individual animal you get a good look at. First sighting of a species earns XP. */
+export function noteWildlife(id: WildlifeId) {
+  const rec = S.wildlife[id];
+  if (!rec) {
+    S.wildlife[id] = { count: 1, first: new Date().toISOString() };
+    toast('New wildlife sighting', WILDLIFE_NAME[id], 'good');
+    addXP(10, 'wildlife');
+  } else rec.count++;
+  saveSoon();
 }

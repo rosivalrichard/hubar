@@ -159,6 +159,7 @@ export interface SaveState {
   settings: Settings;
   records: Records;
   museum: MuseumEntry[];
+  wildlife: Record<string, { count: number; first: string }>;
   run: RunState | null;
   provisions: number;
   lastPlayed: string;
@@ -294,6 +295,7 @@ function defaults(): SaveState {
       largestCluster: 0, largestClusterSpecies: '', mostUnusual: '',
     },
     museum: [],
+    wildlife: {},
     run: null,
     provisions: 2,
     lastPlayed: dateKey(),

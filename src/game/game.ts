@@ -1,6 +1,7 @@
 import { tr } from '../i18n';
 import { IS_TOUCH, TouchControls } from '../ui/touch';
-import { recordCollection, recordDiscovery, isExtraordinary } from './museum';
+import { recordCollection, recordDiscovery, isExtraordinary, noteWildlife } from './museum';
+import { Wildlife } from './wildlife';
 import { RARITY_NAME, RARITY_COLOR, KIND_LABEL, type Rarity } from './specimens';
 /* HUBÁR — game orchestrator: world lifecycle, player, interaction, modes. */
 
@@ -83,6 +84,7 @@ export class Game {
 
   private clock = new THREE.Timer();
   private touch: TouchControls | null = null;
+  private wildlife: Wildlife | null = null;
   private flashlight: THREE.SpotLight;
   private flashlightOn = false;
   private elapsed = 0;
@@ -265,6 +267,8 @@ export class Game {
   }
 
   private disposeWorld() {
+    this.wildlife?.dispose();
+    this.wildlife = null;
     this.field?.dispose();
     this.field = null;
     this.weather?.dispose();
@@ -336,6 +340,16 @@ export class Game {
       fog: this.weather.fog,
       seed,
       targetCount: Math.round(biome.mushroomCount * (this.renderQuality === 'low' ? 0.5 : this.renderQuality === 'medium' ? 0.78 : 1)),
+    });
+    this.wildlife = new Wildlife(this.scene, this.forest, cfg.biome, seed, this.renderQuality, {
+      sound: (snd, pan, dist) => this.audio.animal(snd, pan, dist),
+      sighting: (id) => noteWildlife(id),
+      boarHit: () => {
+        this.player.stamina = 0;
+        this.player.hands.addSway(2.5, -1.5);
+        this.audio.animal('grunt', 0, 0.5);
+        toast('A wild boar charged you', 'Never come between a sow and her piglets. Back off slowly.', 'bad');
+      },
     });
 
     const x = resume?.x ?? this.forest.pathX(62) + 0.4;
@@ -867,6 +881,23 @@ export class Game {
       this.weather?.update(dt, this.camera.position);
       this.forest?.update(dt, this.camera.position, this.weather?.wind ?? 0.3);
       if (this.state === 'playing') this.updateTarget();
+      if (this.wildlife && this.weather) {
+        const fwd = this.player.forward();
+        fwd.y = 0;
+        fwd.normalize();
+        this.wildlife.setWetness(this.weather.wetness);
+        this.wildlife.update(dt, {
+          player: this.player.position,
+          forward: fwd,
+          right: new THREE.Vector3(-fwd.z, 0, fwd.x),
+          crouching: this.player.crouching,
+          running: this.player.running,
+          hour: this.weather.hour,
+          rain: this.weather.rain,
+          wetness: this.weather.wetness,
+          temperature: this.weather.temperature,
+        });
+      }
       this.updateAtmosphere();
       this.updateSurvival(dt);
       this.audio.update(dt, {

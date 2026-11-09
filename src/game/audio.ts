@@ -17,6 +17,8 @@ export type SfxName =
   | 'knife'
   | 'page';
 
+export type AnimalSound = 'woodpecker' | 'owl' | 'bark' | 'grunt' | 'flap' | 'chatter' | 'rustle' | 'croak' | 'jay';
+
 export class AudioEngine {
   ctx: AudioContext | null = null;
   master: GainNode | null = null;
@@ -270,6 +272,97 @@ export class AudioEngine {
     lfo.start(t0);
     osc.stop(t0 + 2.4);
     lfo.stop(t0 + 2.4);
+  }
+
+  /** Positional-ish wildlife sounds (stereo pan + distance attenuation). */
+  animal(sound: AnimalSound, pan: number, dist: number) {
+    if (!this.ctx || !this.master || this.muted) return;
+    const ctx = this.ctx;
+    const t0 = ctx.currentTime;
+    const att = clamp(1 / (1 + dist * 0.08), 0.04, 1);
+    const out = ctx.createGain();
+    out.gain.value = att;
+    const p = this.pan(pan);
+    if (p) {
+      out.connect(p);
+      p.connect(this.master);
+    } else out.connect(this.master);
+    const noise = (dur: number, f: number, q: number, peak: number, when: number, type: BiquadFilterType = 'bandpass') => {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      const bf = ctx.createBiquadFilter();
+      bf.type = type;
+      bf.frequency.value = f;
+      bf.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0 + when);
+      g.gain.exponentialRampToValueAtTime(peak, t0 + when + Math.min(0.02, dur * 0.3));
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + when + dur);
+      src.connect(bf).connect(g).connect(out);
+      src.start(t0 + when, this.rng.range(0, 1.5));
+      src.stop(t0 + when + dur + 0.05);
+    };
+    const tone = (f0: number, f1: number, dur: number, peak: number, when: number, type: OscillatorType = 'sine') => {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(f0, t0 + when);
+      o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t0 + when + dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0 + when);
+      g.gain.exponentialRampToValueAtTime(peak, t0 + when + Math.min(0.03, dur * 0.3));
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + when + dur);
+      o.connect(g).connect(out);
+      o.start(t0 + when);
+      o.stop(t0 + when + dur + 0.05);
+    };
+    switch (sound) {
+      case 'woodpecker': {
+        // drumming: ~16 strikes accelerating then fading
+        const n = this.rng.int(12, 20);
+        let tt = 0;
+        for (let i = 0; i < n; i++) {
+          noise(0.03, 900 + this.rng.range(-80, 80), 3, 0.05 * (1 - i / (n * 1.4)), tt, 'bandpass');
+          tt += 0.055 - i * 0.0012;
+        }
+        break;
+      }
+      case 'owl':
+        tone(380, 330, 0.5, 0.03, 0);
+        tone(360, 300, 0.25, 0.018, 0.9);
+        tone(390, 320, 0.9, 0.028, 1.25);
+        break;
+      case 'bark': // roe/red deer alarm bark
+        noise(0.22, 520, 1.2, 0.09, 0, 'bandpass');
+        tone(260, 180, 0.2, 0.03, 0, 'sawtooth');
+        noise(0.2, 480, 1.2, 0.07, 0.65, 'bandpass');
+        break;
+      case 'grunt':
+        for (let i = 0; i < 3; i++) {
+          noise(0.16, 220, 2.5, 0.12, i * 0.22, 'lowpass');
+          tone(95, 70, 0.15, 0.03, i * 0.22, 'sawtooth');
+        }
+        break;
+      case 'flap':
+        for (let i = 0; i < 6; i++) noise(0.05, 1800, 0.8, 0.06 * (1 - i / 7), i * 0.06, 'bandpass');
+        break;
+      case 'chatter':
+        for (let i = 0; i < 9; i++) tone(5200 + this.rng.range(-600, 600), 4000, 0.03, 0.012, i * 0.05);
+        break;
+      case 'rustle':
+        noise(0.5, 3200, 0.6, 0.05, 0, 'highpass');
+        break;
+      case 'croak':
+        for (let i = 0; i < 3; i++) {
+          const o = i * 0.18;
+          tone(140, 110, 0.12, 0.03, o, 'square');
+          noise(0.1, 600, 2, 0.03, o, 'bandpass');
+        }
+        break;
+      case 'jay':
+        noise(0.25, 2400, 1.5, 0.08, 0, 'bandpass');
+        noise(0.22, 2100, 1.5, 0.06, 0.32, 'bandpass');
+        break;
+    }
   }
 
   footstep(surface: string, running: boolean) {

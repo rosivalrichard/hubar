@@ -793,3 +793,11 @@ p { margin: 0; }
 .mus-dims { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 0 10px 6px; font-size: 10px; color: var(--parchment-dim); }
 .mus-empty { grid-column: 1 / -1; padding: 28px; border: 1px dashed var(--line); color: var(--muted); font-family: var(--serif); font-style: italic; font-size: 13px; text-align: center; }
 .chip[style*="--rc"].on { border-color: var(--rc); color: var(--rc); }
+
+.mus-section-title { font-size: 9px; letter-spacing: .2em; text-transform: uppercase; color: var(--gold); margin: 6px 0 8px; display: flex; gap: 10px; align-items: baseline; }
+.mus-section-title em { font-style: normal; color: var(--faint); }
+.wild-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-bottom: 18px; }
+.wild-cell { background: rgba(10, 14, 10, 0.86); padding: 9px 11px; display: flex; flex-direction: column; gap: 2px; }
+.wild-cell b { font-family: var(--serif); font-weight: 400; font-size: 13px; color: var(--faint); }
+.wild-cell.seen b { color: var(--parchment); }
+.wild-cell span { font-size: 9px; color: var(--faint); }
