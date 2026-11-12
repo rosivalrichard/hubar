@@ -17,6 +17,10 @@ export class Input {
   moveY = 0;
   /** Touch devices have no pointer lock: lock is emulated. */
   virtualLock = false;
+  /** Desktop fallback when the browser refuses pointer lock (sandboxed preview, Chrome's re-lock cooldown
+   *  right after Esc): play continues with a free cursor and you look around by dragging the mouse. */
+  fallback = false;
+  onFallback: (() => void) | null = null;
 
   private el: HTMLElement;
   private handlers: { target: EventTarget; type: string; fn: EventListener }[] = [];
@@ -31,6 +35,10 @@ export class Input {
     add(window, 'keydown', ((e: KeyboardEvent) => {
       if (['Tab', 'Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
       if (e.repeat) return;
+      if (e.code === 'Escape' && this.fallback && this.locked) {
+        this.exitLock(); // no browser pointer lock to release, so Esc pauses through us
+        return;
+      }
       this.keys.add(e.code);
       this.pressedKeys.add(e.code);
       this.onKeyDown?.(e.code);
@@ -52,6 +60,7 @@ export class Input {
     }) as EventListener);
     add(window, 'mousemove', ((e: MouseEvent) => {
       if (!this.locked || !this.enabled) return;
+      if (this.fallback && !e.buttons) return; // free cursor: look only while dragging
       this.mouseDX += e.movementX;
       this.mouseDY += e.movementY;
     }) as EventListener);
@@ -62,12 +71,17 @@ export class Input {
     add(el, 'contextmenu', ((e: Event) => e.preventDefault()) as EventListener);
 
     add(document, 'pointerlockchange', (() => {
-      this.locked = document.pointerLockElement === el;
+      const has = document.pointerLockElement === el;
+      if (this.fallback) {
+        if (has) this.fallback = false; // a late lock arrived: switch to normal mouse-look
+        return;
+      }
+      this.locked = has;
       this.onLockChange?.(this.locked);
     }) as EventListener);
     add(document, 'pointerlockerror', (() => {
-      this.locked = false;
-      this.onLockChange?.(false);
+      // Previously this reported "unlocked", which re-opened the pause menu in an endless loop.
+      this.enterFallback();
     }) as EventListener);
   }
 
@@ -85,14 +99,45 @@ export class Input {
       }
       return;
     }
-    if (document.pointerLockElement !== this.el) {
-      const p = this.el.requestPointerLock?.() as unknown as Promise<void> | undefined;
-      if (p && typeof p.catch === 'function') p.catch(() => {});
+    if (document.pointerLockElement === this.el) return;
+    if (this.fallback) {
+      if (!this.locked) {
+        this.locked = true;
+        setTimeout(() => this.onLockChange?.(true), 0);
+      }
+      return;
     }
+    this.wantLock = true;
+    const fail = () => {
+      if (!this.wantLock || document.pointerLockElement === this.el || this.fallback) return;
+      this.enterFallback();
+    };
+    try {
+      if (!this.el.requestPointerLock) return fail();
+      const p = this.el.requestPointerLock() as unknown as Promise<void> | undefined;
+      if (p && typeof p.catch === 'function') p.catch(fail);
+    } catch {
+      fail();
+    }
+    window.setTimeout(fail, 500);
   }
 
+  private enterFallback() {
+    if (this.virtualLock) return;
+    this.fallback = true;
+    if (!this.locked) {
+      this.locked = true;
+      this.onLockChange?.(true);
+    }
+    this.onFallback?.();
+  }
+
+  private wantLock = false;
+
   exitLock() {
-    if (this.virtualLock) {
+    this.wantLock = false;
+    if (this.virtualLock || this.fallback) {
+      this.fallback = false; // next resume tries a real pointer lock again
       if (this.locked) {
         this.locked = false;
         setTimeout(() => this.onLockChange?.(false), 0);

@@ -1162,5 +1162,7 @@ export const SK: Record<string, string> = {
  "Never come between a sow and her piglets. Back off slowly.": "Nikdy sa nedostaň medzi diviačicu a prasiatka. Pomaly ustúp.",
  "Wildlife journal": "Denník pozorovaní zveri",
  "Exhibits": "Exponáty",
- "not yet seen": "zatiaľ nepozorované"
+ "not yet seen": "zatiaľ nepozorované",
+ "Mouse capture unavailable": "Zachytenie myši nie je dostupné",
+ "Look around by dragging with the mouse. Esc pauses.": "Rozhliadaš sa ťahaním myšou. Esc pozastaví hru."
 };

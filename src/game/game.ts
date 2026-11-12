@@ -157,6 +157,12 @@ export class Game {
     this.player.onFootstep = (surface, running) => this.audio.footstep(surface, running);
     this.input.onLockChange = (locked) => this.handleLock(locked);
     this.input.onKeyDown = (code) => this.handleKey(code);
+    let fallbackHinted = false;
+    this.input.onFallback = () => {
+      if (fallbackHinted) return;
+      fallbackHinted = true;
+      toast('Mouse capture unavailable', 'Look around by dragging with the mouse. Esc pauses.', 'info');
+    };
     if (IS_TOUCH) {
       this.input.virtualLock = true;
       this.touch = new TouchControls(this.input, this.canvas, () => this.state, (dx, dy) => {
